@@ -33,6 +33,7 @@ export default function ProfilePage() {
   const [followers, setFollowers] = useState(0);
   const [following, setFollowing] = useState(0);
   const [bio, setBio] = useState('Your live profile details will show here after login.');
+  const [theme, setTheme] = useState('dark');
 
   useEffect(() => {
     async function load() {
@@ -72,7 +73,10 @@ export default function ProfilePage() {
     <div className="pw-profile-page">
       <style jsx>{styles}</style>
       <div className="pw-profile-shell">
-        <button className="pw-top-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+        <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
+          <button className="pw-top-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+          <button className="pw-top-btn" onClick={() => router.push('/settings')} style={{ color: 'var(--wire)', borderColor: 'var(--wire)' }}><Globe size={16} /> Settings</button>
+        </div>
 
         <section className="pw-profile-hero">
           <div className="pw-profile-avatar">{String(name).slice(0, 2).toUpperCase()}</div>
