@@ -3,7 +3,7 @@ import {
   Search, Bell, User, Home, Compass, Bookmark, Heart, Share2,
   Sparkles, Sun, Moon, X, Plus, ArrowRight, ArrowLeft, Check,
   TrendingUp, Volume2, ShieldCheck, Languages, MessageSquare, Settings as SettingsIcon,
-  LogOut, ChevronRight
+  LogOut, ChevronRight, Menu
 } from "lucide-react";
 import { supabase, uploadFileToBucket } from "../lib/supabaseClient";
 import { followUser, unfollowUser } from "../lib/follows";
@@ -166,11 +166,15 @@ const CSS = `
 
 /* ---------- Landing ---------- */
 .pw-landing{max-width:1160px; margin:0 auto; padding:28px 24px 80px;}
-.pw-landing-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:70px;}
+.pw-landing-nav{display:flex; align-items:center; justify-content:space-between; margin-bottom:70px; gap:16px; flex-wrap:wrap;}
 .pw-logo{display:flex; align-items:center; gap:10px; font-weight:700; font-size:19px; letter-spacing:-.02em;}
-.pw-landing-actions{display:flex; align-items:center; gap:14px;}
+.pw-landing-actions{display:flex; align-items:center; gap:14px; flex-wrap:wrap; justify-content:flex-end;}
+.pw-landing-actions button{flex-shrink:0;}
+.pw-mobile-menu-btn{display:none; background:transparent; border:none; color:var(--t1); width:40px; height:40px; border-radius:50%; display:flex; align-items:center; justify-content:center;}
 .pw-ghost-btn{background:transparent; border:1px solid var(--border); color:var(--t1); padding:10px 18px; border-radius:100px; font-weight:600; font-size:14px;}
 .pw-hero{text-align:center; max-width:760px; margin:0 auto 56px;}
+.pw-mobile-menu{display:none; flex-direction:column; gap:12px; margin-top:14px;}
+.pw-mobile-menu.open{display:flex;}
 .pw-hero .pw-eyebrow{display:inline-flex; align-items:center; gap:7px; font-size:12.5px; font-weight:600; color:var(--wire); background:var(--surface-2); border:1px solid var(--border); padding:7px 14px; border-radius:100px; margin-bottom:24px;}
 .pw-hero h1{font-size:56px; line-height:1.06; letter-spacing:-.03em; margin:0 0 20px; font-weight:600;}
 .pw-hero h1 em{font-style:normal; color:var(--wire);}
@@ -349,7 +353,7 @@ const CSS = `
 .pw-count-note{font-size:12.5px; color:var(--t3); margin:18px 0 4px;}
 
 /* ---------- App shell (topbar, ticker, feed) ---------- */
-.pw-topbar{position:sticky; top:0; z-index:50; backdrop-filter:blur(20px) saturate(180%); background:color-mix(in srgb, var(--bg) 78%, transparent); border-bottom:1px solid var(--border); padding-top:env(safe-area-inset-top);}
+.pw-topbar{position:fixed; top:0; left:0; right:0; z-index:60; backdrop-filter:blur(20px) saturate(180%); background:color-mix(in srgb, var(--bg) 95%, transparent); border-bottom:1px solid var(--border); padding-top:env(safe-area-inset-top);}
 .pw-topbar-inner{max-width:1240px; margin:0 auto; padding:14px 24px; display:flex; align-items:center; gap:24px;}
 .pw-nav-links{display:flex; gap:2px;}
 .pw-nav-links button{padding:9px 14px; border-radius:100px; font-size:14px; font-weight:500; color:var(--t2); background:none; border:none; transition:.2s;}
@@ -482,7 +486,7 @@ const CSS = `
 @media (max-width:768px){
   .pw-topbar-search, .pw-nav-links{display:none;}
   .pw-topbar-inner{padding:12px 16px; gap:12px;}
-  .pw-wrap{padding:20px 16px 110px; max-width:100%;}
+  .pw-wrap{padding:100px 16px 110px; max-width:100%;}
   .pw-hero-post{grid-template-columns:1fr; gap:18px; margin-bottom:32px; padding-bottom:28px;}
   .pw-hero-post h1{font-size:24px; margin:12px 0;}
   .pw-dek{font-size:15px;}
@@ -494,6 +498,17 @@ const CSS = `
   .pw-settings-row{padding:13px 14px;}
   .pw-settings-title{font-size:22px;}
   .pw-desktop-create-story{display:none !important;}
+}
+@media (max-width:680px){
+  .pw-landing-nav{flex-direction:column; align-items:flex-start; margin-bottom:36px;}
+  .pw-mobile-menu-btn{display:flex;}
+  .pw-landing-actions{justify-content:flex-start; width:100%; gap:10px;}
+  .pw-mobile-menu{display:none;}
+  .pw-mobile-menu.open{display:flex;}
+  .pw-hero-ctas, .pw-command-bar{flex-direction:column; align-items:stretch;}
+  .pw-hero-ctas button, .pw-command-bar button{width:100%;}
+  .pw-hero{padding:0 8px;}
+  .pw-hero h1{font-size:32px;}
 }
 @media (max-width:400px){
   .pw-hero-post h1{font-size:21px;}
@@ -531,6 +546,7 @@ function Landing({ onGetStarted, onSignIn, theme, toggleTheme }) {
   const [activeFaq, setActiveFaq] = useState<number | null>(0);
   const [newsletterEmail, setNewsletterEmail] = useState('');
   const [newsletterStatus, setNewsletterStatus] = useState('');
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
   function runCommand() {
     setCommandLoading(true);
@@ -553,17 +569,26 @@ function Landing({ onGetStarted, onSignIn, theme, toggleTheme }) {
     <div className="pw-landing">
       <div className="pw-landing-nav">
         <div className="pw-logo"><LogoMark />PulseWire</div>
+        <button className="pw-mobile-menu-btn" onClick={() => setMobileMenuOpen((current) => !current)} aria-label="Toggle menu">
+          {mobileMenuOpen ? <X size={18} /> : <Menu size={18} />}
+        </button>
         <div className="pw-landing-actions">
-          <button className="pw-nav-link" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>Features</button>
-          <button className="pw-nav-link" onClick={() => document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' })}>Pricing</button>
-          <button className="pw-nav-link" onClick={() => document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' })}>FAQ</button>
-          <button className="pw-theme-toggle" onClick={toggleTheme} aria-label="Toggle theme">
+          <button className="pw-nav-link" onClick={() => { document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Features</button>
+          <button className="pw-nav-link" onClick={() => { document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Pricing</button>
+          <button className="pw-nav-link" onClick={() => { document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>FAQ</button>
+          <button className="pw-theme-toggle" onClick={() => { toggleTheme(); setMobileMenuOpen(false); }} aria-label="Toggle theme">
             <div className="pw-knob">{theme === 'dark' ? <Moon size={13} /> : <Sun size={13} />}</div>
           </button>
-          <button className="pw-ghost-btn" onClick={onSignIn}>Log in</button>
+          <button className="pw-ghost-btn" onClick={() => { onSignIn(); setMobileMenuOpen(false); }}>Log in</button>
         </div>
       </div>
-
+      <div className={`pw-mobile-menu ${mobileMenuOpen ? 'open' : ''}`}>
+        <button className="pw-nav-link" onClick={() => { document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Features</button>
+        <button className="pw-nav-link" onClick={() => { document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Pricing</button>
+        <button className="pw-nav-link" onClick={() => { document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>FAQ</button>
+        <button className="pw-ghost-btn" onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}>Toggle theme</button>
+        <button className="pw-btn-primary" onClick={() => { onSignIn(); setMobileMenuOpen(false); }}>Log in</button>
+      </div>
       <section className="pw-hero-section pw-reveal">
         <div className="pw-hero-copy">
           <div className="pw-eyebrow"><Sparkles size={13} /> The future of AI-powered news starts here.</div>

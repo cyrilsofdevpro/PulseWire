@@ -1,5 +1,5 @@
 import type { NextApiRequest, NextApiResponse } from 'next';
-import { createAdminSessionToken, setAdminSessionCookie, verifyAdminPassword, getAdminPasswordConfigured } from '../../../lib/adminAuth';
+import { createAdminToken, setAdminSessionCookie, verifyAdminPassword, getAdminPasswordConfigured } from '../../../lib/adminAuth';
 
 const failedAttempts = new Map<string, number>();
 
@@ -34,7 +34,7 @@ export default function handler(req: NextApiRequest, res: NextApiResponse) {
   }
 
   failedAttempts.delete(ip);
-  const token = createAdminSessionToken();
-  setAdminSessionCookie(res, token, { headers: { 'x-forwarded-proto': req.headers['x-forwarded-proto'] as string | undefined } });
+  const token = createAdminToken();
+  setAdminSessionCookie(res, token);
   return res.status(200).json({ ok: true, redirectTo: '/pulsewire/admin' });
 }

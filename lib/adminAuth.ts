@@ -1,82 +1,151 @@
-import { createHash, createHmac, randomUUID, timingSafeEqual } from 'crypto';
-import type { NextApiRequest, NextApiResponse } from 'next';
+import { timingSafeEqual } from 'crypto'
+import type { IncomingMessage } from 'http'
+import type { NextApiRequest, NextApiResponse } from 'next'
+import {
+  generateToken,
+  requireAdmin,
+  requireAuth,
+  getTokenFromRequest,
+  JwtPayload,
+  JwtError,
+} from './jwt'
 
-export const ADMIN_COOKIE_NAME = 'pw_admin_session';
-export const ADMIN_SESSION_TTL_MS = 1000 * 60 * 60 * 8;
+const ADMIN_COOKIE_NAME = 'pulsewire_admin_token'
+const SESSION_COOKIE_NAME = 'pulsewire_auth_token'
+const TOKEN_MAX_AGE = parseInt(process.env.JWT_EXPIRES_IN || '86400', 10)
+const COOKIE_PATH = '/'
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || ''
 
-const ADMIN_SECRET = process.env.PULSEWIRE_ADMIN_SECRET || 'pulsewire-admin-dev-secret';
-const ADMIN_PASSWORD = process.env.PULSEWIRE_ADMIN_PASSWORD || process.env.ADMIN_PASSWORD;
-const ADMIN_PASSWORD_HASH = process.env.PULSEWIRE_ADMIN_PASSWORD_HASH;
-
-function safeEqual(a: string, b: string) {
-  const aBuf = Buffer.from(a);
-  const bBuf = Buffer.from(b);
-  if (aBuf.length !== bBuf.length) return false;
-  return timingSafeEqual(aBuf, bBuf);
-}
-
-function hashPassword(password: string) {
-  return createHash('sha256').update(password).digest('hex');
+export function getAdminPasswordConfigured() {
+  return ADMIN_PASSWORD.length > 0
 }
 
 export function verifyAdminPassword(password: string) {
-  if (!password) return false;
-  if (!ADMIN_PASSWORD && !ADMIN_PASSWORD_HASH) return false;
-  if (ADMIN_PASSWORD_HASH) {
-    return safeEqual(hashPassword(password), ADMIN_PASSWORD_HASH);
+  if (!ADMIN_PASSWORD) return false
+  const input = Buffer.from(password, 'utf8')
+  const stored = Buffer.from(ADMIN_PASSWORD, 'utf8')
+  if (input.length !== stored.length) {
+    return false
   }
-  return safeEqual(password, ADMIN_PASSWORD || '');
+  return timingSafeEqual(input, stored)
 }
 
-export function createAdminSessionToken() {
-  const issuedAt = Date.now().toString();
-  const nonce = randomUUID();
-  const payload = `${issuedAt}.${nonce}`;
-  const signature = createHmac('sha256', ADMIN_SECRET).update(payload).digest('hex');
-  return `${payload}.${signature}`;
+function serializeCookie(name: string, value: string, options: Record<string, unknown> = {}) {
+  const encodedValue = encodeURIComponent(value)
+  const segments = [`${name}=${encodedValue}`]
+  if (options.maxAge !== undefined) segments.push(`Max-Age=${options.maxAge}`)
+  if (options.domain) segments.push(`Domain=${options.domain}`)
+  if (options.path) segments.push(`Path=${options.path}`)
+  if (options.expires) segments.push(`Expires=${options.expires}`)
+  if (options.httpOnly) segments.push('HttpOnly')
+  if (options.secure) segments.push('Secure')
+  if (options.sameSite) segments.push(`SameSite=${options.sameSite}`)
+  return segments.join('; ')
 }
 
-export function verifyAdminSessionToken(token?: string | null) {
-  if (!token) return false;
-  const parts = token.split('.');
-  if (parts.length !== 3) return false;
-  const [issuedAt, nonce, signature] = parts;
-  if (!issuedAt || !nonce || !signature) return false;
-  const payload = `${issuedAt}.${nonce}`;
-  const expected = createHmac('sha256', ADMIN_SECRET).update(payload).digest('hex');
-  if (!safeEqual(signature, expected)) return false;
-  const age = Date.now() - Number(issuedAt);
-  return age > 0 && age < ADMIN_SESSION_TTL_MS;
+export function createAdminToken() {
+  return generateToken('admin', {
+    role: 'admin',
+    issuer: process.env.JWT_ISSUER,
+    audience: process.env.JWT_AUDIENCE,
+    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+  })
 }
 
-export function getAdminSessionToken(req: { headers?: { cookie?: string } }) {
-  const cookieHeader = req.headers?.cookie || '';
-  const cookies = cookieHeader.split(';').map((item) => item.trim());
-  const sessionCookie = cookies.find((item) => item.startsWith(`${ADMIN_COOKIE_NAME}=`));
-  if (!sessionCookie) return null;
-  return decodeURIComponent(sessionCookie.slice(ADMIN_COOKIE_NAME.length + 1));
+export function createUserToken(userId: string, role = 'user') {
+  return generateToken(userId, {
+    role,
+    issuer: process.env.JWT_ISSUER,
+    audience: process.env.JWT_AUDIENCE,
+    expiresIn: process.env.JWT_EXPIRES_IN || '24h',
+  })
 }
 
-export function setAdminSessionCookie(
-  res: { setHeader: (name: string, value: string | string[] | undefined) => void },
-  token: string,
-  req?: { headers?: { 'x-forwarded-proto'?: string } }
-) {
-  const forwardedProto = req?.headers?.['x-forwarded-proto'];
-  const secure = process.env.NODE_ENV === 'production' || forwardedProto === 'https';
-  const cookie = `${ADMIN_COOKIE_NAME}=${encodeURIComponent(token)}; HttpOnly; Path=/; Max-Age=${Math.floor(ADMIN_SESSION_TTL_MS / 1000)}; SameSite=Lax${secure ? '; Secure' : ''}`;
-  res.setHeader('Set-Cookie', cookie);
+function cookieOptions(maxAge: number) {
+  return {
+    path: COOKIE_PATH,
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'Lax',
+    maxAge,
+  }
 }
 
-export function clearAdminSessionCookie(res: { setHeader: (name: string, value: string | string[] | undefined) => void }) {
-  const cookie = `${ADMIN_COOKIE_NAME}=; HttpOnly; Path=/; Max-Age=0; SameSite=Lax`;
-  res.setHeader('Set-Cookie', cookie);
+export function setAdminSessionCookie(res: NextApiResponse, token: string) {
+  res.setHeader('Set-Cookie', serializeCookie(ADMIN_COOKIE_NAME, token, cookieOptions(TOKEN_MAX_AGE)))
 }
 
-export function isAdminAuthenticated(req: { headers?: { cookie?: string } }) {
-  return verifyAdminSessionToken(getAdminSessionToken(req));
+export function setUserSessionCookie(res: NextApiResponse, token: string) {
+  res.setHeader('Set-Cookie', serializeCookie(SESSION_COOKIE_NAME, token, cookieOptions(TOKEN_MAX_AGE)))
 }
 
-export function getAdminPasswordConfigured() {
-  return Boolean(ADMIN_PASSWORD || ADMIN_PASSWORD_HASH);
+export function clearAdminSessionCookie(res: NextApiResponse) {
+  res.setHeader(
+    'Set-Cookie',
+    serializeCookie(ADMIN_COOKIE_NAME, '', {
+      path: COOKIE_PATH,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+      maxAge: 0,
+    })
+  )
+}
+
+export function clearUserSessionCookie(res: NextApiResponse) {
+  res.setHeader(
+    'Set-Cookie',
+    serializeCookie(SESSION_COOKIE_NAME, '', {
+      path: COOKIE_PATH,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'Lax',
+      maxAge: 0,
+    })
+  )
+}
+
+export function isAdminAuthenticated(req: NextApiRequest | IncomingMessage) {
+  try {
+    const token = getTokenFromRequest(req, ADMIN_COOKIE_NAME)
+    if (!token) return false
+    requireAdmin(req, {
+      issuer: process.env.JWT_ISSUER,
+      audience: process.env.JWT_AUDIENCE,
+      cookieName: ADMIN_COOKIE_NAME,
+    })
+    return true
+  } catch {
+    return false
+  }
+}
+
+export function authenticateAdminRequest(req: NextApiRequest | IncomingMessage) {
+  try {
+    return requireAdmin(req, {
+      issuer: process.env.JWT_ISSUER,
+      audience: process.env.JWT_AUDIENCE,
+      cookieName: ADMIN_COOKIE_NAME,
+    }) as JwtPayload
+  } catch (error) {
+    if (error instanceof JwtError) {
+      throw error
+    }
+    throw new JwtError('INVALID_TOKEN', 'Admin authentication failed.')
+  }
+}
+
+export function authenticateUserRequest(req: NextApiRequest | IncomingMessage) {
+  try {
+    return requireAuth(req, {
+      issuer: process.env.JWT_ISSUER,
+      audience: process.env.JWT_AUDIENCE,
+      cookieName: SESSION_COOKIE_NAME,
+    }) as JwtPayload
+  } catch (error) {
+    if (error instanceof JwtError) {
+      throw error
+    }
+    throw new JwtError('INVALID_TOKEN', 'Authentication failed.')
+  }
 }
