@@ -440,7 +440,8 @@ const CSS = `
 .pw-ai-widget h3{font-size:16px; margin:0 0 6px; display:flex; align-items:center; gap:8px;}
 .pw-ai-widget p{font-size:13px; color:var(--t2); margin:0 0 16px; line-height:1.5;}
 
-.pw-fab{position:fixed; right:20px; bottom:calc(88px + env(safe-area-inset-bottom)); z-index:60; width:56px; height:56px; border-radius:50%; background:var(--wire); color:#04241f; border:none; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 30px -8px rgba(0,217,184,.55);}
+.pw-fab-container{position:fixed; right:20px; bottom:calc(88px + env(safe-area-inset-bottom)); z-index:60; display:flex; flex-direction:column; gap:12px; align-items:center; justify-content:flex-end;}
+.pw-fab{width:56px; height:56px; border-radius:50%; background:var(--wire); color:#04241f; border:none; display:flex; align-items:center; justify-content:center; box-shadow:0 12px 30px -8px rgba(0,217,184,.55); cursor:pointer; transition:.2s ease;}
 .pw-tabbar{display:none; position:fixed; left:0; right:0; bottom:0; z-index:70; padding:8px 6px calc(6px + env(safe-area-inset-bottom)); background:color-mix(in srgb, var(--bg) 75%, transparent); backdrop-filter:blur(24px) saturate(180%); border-top:1px solid var(--border);}
 .pw-tab-item{display:flex; flex-direction:column; align-items:center; gap:3px; color:var(--t3); background:none; border:none; padding:6px 10px; border-radius:14px; flex:1; min-width:0;}
 .pw-tab-item.active{color:var(--wire);}
@@ -1624,7 +1625,14 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
         )}
       </div>
 
-      {tab === "feed" && <button className="pw-fab" aria-label="Write article" onClick={() => setComposerOpen(true)}><Plus size={22} color="#04241f" /></button>}
+      {tab === "feed" && (
+        <div className="pw-fab-container">
+          <button className="pw-fab" aria-label="PulseWire AI" onClick={() => window.location.assign('/ai')} style={{ background: '#7C3AED' }} title="Ask PulseWire AI">
+            <Sparkles size={22} color="#FFF" />
+          </button>
+          <button className="pw-fab" aria-label="Write article" onClick={() => setComposerOpen(true)}><Plus size={22} color="#04241f" /></button>
+        </div>
+      )}
 
       <nav className="pw-tabbar">
         <button className={`pw-tab-item ${tab === "feed" ? "active" : ""}`} onClick={() => setTab("feed")}><Home size={21} /><span>Home</span></button>
