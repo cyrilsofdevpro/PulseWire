@@ -21,6 +21,7 @@ type Article = {
   excerpt: string
   author: string
   authorId?: string
+  authorVerified?: boolean
   time: string
   read: string
   hero?: boolean
