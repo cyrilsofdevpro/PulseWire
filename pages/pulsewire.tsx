@@ -617,6 +617,7 @@ function Landing({ onGetStarted, onSignIn, theme, toggleTheme }) {
           <button className="pw-nav-link" onClick={() => { document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Features</button>
           <button className="pw-nav-link" onClick={() => { document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Pricing</button>
           <button className="pw-nav-link" onClick={() => { document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>FAQ</button>
+          <button className="pw-ghost-btn" onClick={() => { window.location.assign('/community/discussions'); setMobileMenuOpen(false); }}>Chat</button>
           <button className="pw-theme-toggle" onClick={() => { toggleTheme(); setMobileMenuOpen(false); }} aria-label="Toggle theme">
             <div className="pw-knob">{theme === 'dark' ? <Moon size={13} /> : <Sun size={13} />}</div>
           </button>
@@ -627,6 +628,7 @@ function Landing({ onGetStarted, onSignIn, theme, toggleTheme }) {
         <button className="pw-nav-link" onClick={() => { document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Features</button>
         <button className="pw-nav-link" onClick={() => { document.getElementById('plans')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>Pricing</button>
         <button className="pw-nav-link" onClick={() => { document.getElementById('faq')?.scrollIntoView({ behavior: 'smooth' }); setMobileMenuOpen(false); }}>FAQ</button>
+        <button className="pw-ghost-btn" onClick={() => { window.location.assign('/community/discussions'); setMobileMenuOpen(false); }}>Chat</button>
         <button className="pw-ghost-btn" onClick={() => { toggleTheme(); setMobileMenuOpen(false); }}>Toggle theme</button>
         <button className="pw-btn-primary" onClick={() => { onSignIn(); setMobileMenuOpen(false); }}>Log in</button>
       </div>
