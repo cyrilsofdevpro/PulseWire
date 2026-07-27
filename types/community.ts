@@ -160,6 +160,9 @@ export interface Discussion {
   creator?: Profile;
   title: string;
   content: string;
+  ai_summary?: string;
+  suggested_tags?: string[];
+  moderation?: any;
   category: string;
   is_pinned: boolean;
   is_featured: boolean;

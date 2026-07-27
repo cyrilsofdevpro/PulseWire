@@ -3,10 +3,13 @@
  */
 
 import { supabase } from './supabaseClient';
+import { supabaseAdmin } from './supabaseAdmin';
 import type {
   Profile,
   Follower,
   Comment,
+  Discussion,
+  DiscussionReply,
   Reaction,
   ReactionType,
   Notification,
@@ -560,6 +563,217 @@ export async function getActivityFeed(userId: string, limit = 50): Promise<any[]
 
   if (error) {
     console.error('Error fetching activity feed:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+/* ========== Discussion Operations ========== */
+
+export async function createDiscussion(
+  creatorId: string,
+  title: string,
+  content: string,
+  category: string,
+  userInfo?: any,
+  aiData?: { ai_summary?: string; suggested_tags?: string[]; moderation?: any }
+): Promise<Discussion | null> {
+  try {
+    const client = supabaseAdmin || supabase;
+    // Ensure a minimal profile exists for the creator to satisfy FK constraints
+    try {
+      const usernameFallback = `user_${creatorId.slice(0, 8)}`;
+      const profilePayload: any = {
+        id: creatorId,
+        username: usernameFallback,
+        created_at: new Date().toISOString(),
+      };
+
+      // If we have user info from auth, include common fields to satisfy stricter constraints
+      if (userInfo) {
+        if (userInfo.email) profilePayload.email = userInfo.email;
+        if (userInfo.user_metadata?.name) profilePayload.full_name = userInfo.user_metadata.name;
+        if (userInfo.user_metadata?.full_name) profilePayload.full_name = userInfo.user_metadata.full_name;
+        if (userInfo.user_metadata?.avatar_url) profilePayload.avatar_url = userInfo.user_metadata.avatar_url;
+      }
+
+      // Ensure required name fields are present to satisfy DB NOT NULL constraints
+      const nameFromMeta = userInfo?.user_metadata?.name || userInfo?.user_metadata?.full_name || null;
+      if (nameFromMeta) {
+        const parts = String(nameFromMeta).trim().split(/\s+/);
+        profilePayload.first_name = parts.shift() || 'User';
+        profilePayload.last_name = parts.join(' ') || '';
+      } else if (profilePayload.email) {
+        // derive a simple first name from email local-part
+        const local = String(profilePayload.email).split('@')[0] || 'User';
+        profilePayload.first_name = local.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 30);
+        profilePayload.last_name = '';
+      } else {
+        profilePayload.first_name = 'User';
+        profilePayload.last_name = '';
+      }
+
+      // Retry upsert a few times to handle transient network errors
+      let upsertError: any = null;
+      let upsertData: any = null;
+      const maxAttempts = 3;
+      for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+        try {
+          const res = await client.from('profiles').upsert(profilePayload, { onConflict: 'id' });
+          upsertData = res.data;
+          upsertError = res.error;
+          if (!upsertError) break;
+          console.warn(`Profile upsert attempt ${attempt} failed for ${creatorId}:`, upsertError.message || upsertError);
+        } catch (err) {
+          upsertError = err;
+          console.warn(`Profile upsert attempt ${attempt} threw for ${creatorId}:`, err && (err.message || err));
+        }
+
+        // small delay before retrying
+        if (attempt < maxAttempts) {
+          await new Promise(r => setTimeout(r, 250 * attempt));
+        }
+      }
+
+      if (upsertError) {
+        console.warn('Profile upsert error for creator', creatorId, upsertError);
+      }
+    } catch (e) {
+      // non-fatal; log and continue — insertion may still fail if DB constraints stricter
+      console.warn('Warning: could not upsert minimal profile for creator', creatorId, e);
+    }
+    const insertPayload: any = {
+      creator_id: creatorId,
+      title,
+      content,
+      category,
+    };
+
+    if (aiData?.ai_summary) insertPayload.ai_summary = aiData.ai_summary;
+    if (aiData?.suggested_tags) insertPayload.suggested_tags = aiData.suggested_tags;
+    if (aiData?.moderation) insertPayload.moderation = aiData.moderation;
+
+    const { data, error } = await client
+      .from('discussions')
+      .insert(insertPayload)
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    await addActivityFeedItem(
+      creatorId,
+      'discussion_created',
+      'Discussion created',
+      `Started discussion: ${title}`,
+      data.id,
+      { category }
+    );
+
+    return data;
+  } catch (error) {
+    console.error('Error creating discussion:', error);
+    return null;
+  }
+}
+
+export async function getDiscussions(limit = 50, offset = 0): Promise<Discussion[]> {
+  const { data, error } = await supabase
+    .from('discussions')
+    .select(`
+      *,
+      creator:creator_id (*)
+    `)
+    .is('deleted_at', null)
+    .order('is_pinned', { ascending: false })
+    .order('created_at', { ascending: false })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    console.error('Error fetching discussions:', error);
+    return [];
+  }
+
+  return data || [];
+}
+
+export async function getDiscussionById(discussionId: string): Promise<Discussion | null> {
+  const { data, error } = await supabase
+    .from('discussions')
+    .select(`
+      *,
+      creator:creator_id (*)
+    `)
+    .eq('id', discussionId)
+    .is('deleted_at', null)
+    .single();
+
+  if (error) {
+    console.error('Error fetching discussion:', error);
+    return null;
+  }
+
+  return data;
+}
+
+export async function addDiscussionReply(
+  discussionId: string,
+  authorId: string,
+  content: string,
+  parentReplyId?: string
+): Promise<DiscussionReply | null> {
+  try {
+    const client = supabaseAdmin || supabase;
+    const { data, error } = await client
+      .from('discussion_replies')
+      .insert({
+        discussion_id: discussionId,
+        author_id: authorId,
+        parent_reply_id: parentReplyId || null,
+        content,
+      })
+      .select()
+      .single();
+
+    if (error) throw error;
+
+    const discussion = await getDiscussionById(discussionId);
+    if (discussion) {
+      await supabase
+        .from('discussions')
+        .update({ reply_count: discussion.reply_count + 1 })
+        .eq('id', discussionId);
+    }
+
+    await addActivityFeedItem(
+      authorId,
+      'discussion_replied',
+      'Replied to discussion',
+      `Replied to discussion`,
+      discussionId
+    );
+
+    return data;
+  } catch (error) {
+    console.error('Error adding discussion reply:', error);
+    return null;
+  }
+}
+
+export async function getDiscussionReplies(discussionId: string): Promise<DiscussionReply[]> {
+  const { data, error } = await supabase
+    .from('discussion_replies')
+    .select(`
+      *,
+      author:author_id (*)
+    `)
+    .eq('discussion_id', discussionId)
+    .is('deleted_at', null)
+    .order('created_at', { ascending: true });
+
+  if (error) {
+    console.error('Error fetching discussion replies:', error);
     return [];
   }
 
