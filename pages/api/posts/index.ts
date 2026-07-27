@@ -1,5 +1,10 @@
 import type { NextApiRequest, NextApiResponse } from 'next'
 import { supabaseAdmin } from '../../../lib/supabaseAdmin'
+import { generateWithFallback } from '../../../lib/llm'
+
+const AI_CONFIDENCE_THRESHOLD = Number(process.env.AI_CONFIDENCE_THRESHOLD || '70')
+const TRUSTED_POSTS_THRESHOLD = Number(process.env.TRUSTED_POSTS_THRESHOLD || '3')
+const AI_PROMPT_OVERRIDE = process.env.AI_VERIFICATION_PROMPT || ''
 
 function parseImageUrls(field: any) {
   if (!field) return []
@@ -11,7 +16,7 @@ function parseImageUrls(field: any) {
   }
 }
 
-function serializePost(post: any) {
+function serializePostRow(post: any) {
   return {
     id: post.id,
     title: post.title || post.content || 'PulseWire story',
@@ -41,7 +46,36 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       if (error) throw error
 
-      const posts = (data || []).map((post: any) => serializePost(post))
+      const postsRaw = data || []
+
+      // Fetch profile badges for authors in bulk to avoid N+1 on the client
+      const emails = Array.from(new Set(postsRaw.map((p: any) => p.author_email).filter(Boolean)))
+      let profilesMap: Record<string, any> = {}
+      if (emails.length && supabaseAdmin) {
+        try {
+          const { data: profiles } = await supabaseAdmin.from('profiles').select('id,username,email,verification_badge').in('email', emails)
+          if (Array.isArray(profiles)) {
+            profilesMap = profiles.reduce((acc: any, cur: any) => { acc[cur.email] = cur; return acc }, {})
+          }
+        } catch (err) {
+          console.warn('Could not load author profiles for badge mapping', err)
+        }
+      }
+
+      const posts = postsRaw.map((post: any) => {
+        const serialized = serializePostRow(post)
+        const author = post.author_email || serialized.authorEmail || null
+        const prof = author ? profilesMap[author] : null
+        return {
+          ...serialized,
+          aiVerified: !!post.ai_verified,
+          aiVerification: post.ai_verification ? (() => {
+            try { return JSON.parse(post.ai_verification) } catch { return post.ai_verification }
+          })() : null,
+          authorVerifiedBadge: prof ? !!prof.verification_badge : false,
+        }
+      })
+
       return res.status(200).json({ posts })
     } catch (error: any) {
       console.error('Failed to load posts:', error)
@@ -131,13 +165,97 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
 
       // Ensure we return a post object with title/excerpt/category synthesized
       const createdRow = data || {}
-      const returnedPost = serializePost({
-        ...createdRow,
-        // prefer DB returned values if present; otherwise use the original values
-        title: createdRow.title || title || undefined,
-        excerpt: createdRow.excerpt || excerpt || undefined,
-        category: createdRow.category || category || undefined,
-      })
+      const returnedPost = {
+        id: createdRow.id,
+        title: createdRow.title || title || 'PulseWire story',
+        excerpt: createdRow.excerpt || excerpt || 'PulseWire story',
+        category: createdRow.category || category || 'Technology',
+        authorName: createdRow.author_name || createdRow.authorName || authorEmail ? authorEmail.split('@')[0] : 'PulseWire user',
+        authorEmail: createdRow.author_email || createdRow.authorEmail || authorEmail,
+        imageUrls: parseImageUrls(createdRow.image_urls || createdRow.imageUrls || createdRow.image_urls),
+        likesCount: createdRow.likes_count || createdRow.likesCount || 0,
+        commentsCount: createdRow.comments_count || createdRow.commentsCount || 0,
+        sharesCount: createdRow.shares_count || createdRow.sharesCount || 0,
+        createdAt: createdRow.created_at || createdRow.createdAt,
+        comments: [],
+      };
+
+      // Fire-and-forget: run an AI factuality check and attempt to persist results + award badges
+      (async () => {
+        try {
+          const storyText = `${returnedPost.title}\n\n${returnedPost.excerpt || ''}`.trim()
+          if (!storyText) return
+
+          // Prompt the LLM to produce a compact JSON assessment
+          const defaultPrompt = `Assess the factual accuracy of the following news story. Provide a concise JSON-only response with keys: verified (true/false), confidence (number 0-100), rationale (short string), sources (array of URLs if available). Do not include any extra commentary.\n\nStory:\n${storyText}`
+          const prompt = AI_PROMPT_OVERRIDE || defaultPrompt
+          const llm = await generateWithFallback(prompt, { task: 'analysis', max_tokens: 300 })
+          let parsed: any = null
+          if (llm?.text) {
+            // Attempt to parse JSON out of the response
+            const txt = llm.text.trim()
+            try {
+              parsed = JSON.parse(txt)
+            } catch (err) {
+              // Try to extract JSON substring
+              const m = txt.match(/\{[\s\S]*\}/)
+              if (m) {
+                try { parsed = JSON.parse(m[0]) } catch (e) { parsed = { raw: txt } }
+              } else {
+                parsed = { raw: txt }
+              }
+            }
+          }
+
+          const verified = parsed && typeof parsed.verified === 'boolean' ? parsed.verified : false
+          const confidence = parsed && typeof parsed.confidence === 'number' ? parsed.confidence : (parsed && parsed.confidence ? Number(parsed.confidence) : 0)
+          const rationale = parsed && (parsed.rationale || parsed.reason || parsed.explanation) ? (parsed.rationale || parsed.reason || parsed.explanation) : (parsed && parsed.raw ? String(parsed.raw).slice(0, 400) : '')
+          const sources = parsed && Array.isArray(parsed.sources) ? parsed.sources : (parsed && parsed.source ? [parsed.source] : [])
+
+          // Try to persist verification on the post (ignore failures)
+          try {
+            if (supabaseAdmin && createdRow.id) {
+              await supabaseAdmin.from('posts').update({ ai_verified: verified, ai_verification: JSON.stringify({ confidence, rationale, sources }) }).eq('id', createdRow.id)
+            }
+          } catch (err) {
+            console.warn('Failed to persist AI verification on post', err)
+          }
+
+          // If verified with decent confidence, reward the author and consider awarding a badge
+          try {
+            if (verified && confidence >= AI_CONFIDENCE_THRESHOLD && authorEmail) {
+              // find profile by email
+              const { data: profile } = await supabaseAdmin!.from('profiles').select('*').eq('email', authorEmail).maybeSingle()
+              if (profile) {
+                const trustedCount = (profile.trusted_posts_count || 0) + 1
+                const updates: any = { trusted_posts_count: trustedCount }
+                updates.reputation_score = (profile.reputation_score || 0) + 5
+                // award visual verification badge if threshold reached
+                if (!profile.verification_badge && trustedCount >= TRUSTED_POSTS_THRESHOLD) {
+                  updates.verification_badge = true
+                  updates.verified_at = new Date().toISOString()
+                  // create a notification entry
+                  try {
+                    await supabaseAdmin!.from('notifications').insert({ user_id: profile.id, actor_id: null, type: 'badge_awarded', title: 'Trusted poster badge', message: 'You earned the Trusted Poster badge for publishing accurate stories', metadata: { badge: 'Trusted Poster' } })
+                  } catch (nerr) {
+                    console.warn('Could not create badge notification', nerr)
+                  }
+                }
+
+                try {
+                  await supabaseAdmin!.from('profiles').update(updates).eq('id', profile.id)
+                } catch (uperr) {
+                  console.warn('Failed to update profile with trusted post count', uperr)
+                }
+              }
+            }
+          } catch (err) {
+            console.warn('Badge/reputation awarding failed', err)
+          }
+        } catch (err) {
+          console.warn('AI factuality check failed', err)
+        }
+      })()
 
       return res.status(201).json({ post: returnedPost })
     } catch (error: any) {
