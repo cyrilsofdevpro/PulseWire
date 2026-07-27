@@ -574,7 +574,7 @@ export default function DiscussionsPage() {
 
   async function handleCreateDiscussion(e: React.FormEvent) {
     e.preventDefault();
-    if (!currentUser || !newDiscussion.title.trim()) return;
+    if (!newDiscussion.title.trim()) return;
 
     setSubmitting(true);
     try {
@@ -651,11 +651,9 @@ export default function DiscussionsPage() {
               <h1>Community Discussions</h1>
               <p>Chat with the community about news, topics, and more</p>
             </div>
-            {currentUser && (
-              <button className="discussions-new-btn" onClick={() => setShowNewModal(true)}>
-                <Plus size={18} /> Start Discussion
-              </button>
-            )}
+            <button className="discussions-new-btn" onClick={() => setShowNewModal(true)}>
+              <Plus size={18} /> Start Discussion
+            </button>
           </div>
 
           <div className="discussions-search">
