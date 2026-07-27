@@ -512,6 +512,8 @@ interface Discussion {
   creator_id: string;
   title: string;
   content: string;
+  ai_summary?: string;
+  suggested_tags?: string[];
   category: string;
   is_pinned: boolean;
   view_count: number;
