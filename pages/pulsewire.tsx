@@ -1380,6 +1380,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
           excerpt: post.excerpt || post.content || '',
           author: post.authorName || post.authorEmail?.split('@')[0] || 'PulseWire user',
           authorId: post.authorEmail || 'local-user',
+          authorVerified: !!post.authorVerifiedBadge,
           time: 'Just now',
           read: '2 min',
           hero: false,
@@ -1521,6 +1522,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
           <div className="pw-topbar-search"><button className="pw-icon-btn" aria-label="Search"><Search size={17} /></button></div>
           <div className="pw-topbar-right">
             <button className="pw-btn-secondary pw-hide-mobile" onClick={() => window.location.assign('/ai')} style={{ padding: '10px 16px' }}>PulseWireAI</button>
+            <button className="pw-btn-secondary pw-hide-mobile" onClick={() => window.location.assign('/community/discussions')} style={{ padding: '10px 16px' }}>Chat</button>
             <button className="pw-btn-primary pw-desktop-create-story" onClick={() => setComposerOpen(true)} style={{ padding: '10px 16px' }}>Create story</button>
             <button className="pw-icon-btn" onClick={() => window.location.assign('/alerts')} aria-label="Open alerts"><Bell size={17} /><span className="pw-dot-badge" /></button>
             <button className="pw-icon-btn pw-hide-mobile" aria-label="Discover" onClick={() => window.location.assign('/discover')}><Compass size={17} /></button>
@@ -1593,7 +1595,11 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
                       <h3>{a.title}</h3>
                       <p>{a.excerpt}</p>
                       <div className="pw-card-meta">
-                        <div className="pw-meta-left"><div className="pw-mini-avatar" /><span>{a.author} · {a.time} · {a.read}</span></div>
+                        <div className="pw-meta-left"><div className="pw-mini-avatar" />
+                          <span>
+                            {a.author} {a.authorVerified ? <span style={{ color: 'var(--gold)', marginLeft: 6, fontWeight: 700 }}>★</span> : null} · {a.time} · {a.read}
+                          </span>
+                        </div>
                         <div className="pw-actions">
                           <button className={`pw-action-btn ${liked.has(a.id) ? "liked" : ""}`} onClick={e => { e.stopPropagation(); toggleSet(setLiked, a.id); }}>
                             <Heart size={16} fill={liked.has(a.id) ? "currentColor" : "none"} />
@@ -1638,6 +1644,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
         <button className={`pw-tab-item ${tab === "feed" ? "active" : ""}`} onClick={() => setTab("feed")}><Home size={21} /><span>Home</span></button>
         <button className="pw-tab-item" onClick={() => window.location.assign('/discover')}><Compass size={21} /><span>Discover</span></button>
         <button className="pw-tab-item" onClick={() => window.location.assign('/alerts')}><Bell size={21} /><span>Alerts</span></button>
+        <button className="pw-tab-item" onClick={() => window.location.assign('/community/discussions')}><MessageSquare size={21} /><span>Chat</span></button>
         <button className="pw-tab-item" onClick={() => window.location.assign('/profile')}><User size={21} /><span>Profile</span></button>
       </nav>
 
