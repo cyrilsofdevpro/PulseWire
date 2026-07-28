@@ -75,6 +75,18 @@ const TRUSTED_STATS = [
   { label: '99.9% Uptime', emoji: '⭐' },
 ];
 
+const getRecencyTimestamp = (value: any) => {
+  if (!value) return 0;
+  const parsed = Date.parse(value);
+  return Number.isNaN(parsed) ? 0 : parsed;
+};
+
+const sortByRecency = (a: any, b: any) => {
+  const aTime = getRecencyTimestamp(a.publishedAt || a.createdAt || a.timestamp);
+  const bTime = getRecencyTimestamp(b.publishedAt || b.createdAt || b.timestamp);
+  return bTime - aTime;
+};
+
 const FEATURE_NEWS = [
   { badge: 'Breaking', title: 'Ukraine peace talks enter crucial phase', detail: 'Live coverage, expert commentary, and verified sources.' },
   { badge: 'Trending', title: 'AI regulation heats up in Brussels', detail: 'How new rules could reshape generative news and search.' },
@@ -419,6 +431,8 @@ const CSS = `
 .pw-card-body{padding:18px 18px 16px;}
 .pw-card-body h3{font-size:18px; line-height:1.3; margin:0 0 8px; font-weight:600; letter-spacing:-.01em; overflow-wrap:anywhere;}
 .pw-card-body p{font-size:13.5px; color:var(--t2); line-height:1.55; margin:0 0 14px; overflow-wrap:anywhere;}
+.pw-inline-link{font-size:13px; color:var(--wire); font-weight:700; text-decoration:none;}
+.pw-inline-link:hover{text-decoration:underline;}
 .pw-card-meta{display:flex; align-items:center; justify-content:space-between; gap:10px; flex-wrap:wrap;}
 .pw-meta-left{display:flex; align-items:center; gap:8px; font-size:12px; color:var(--t3); min-width:0;}
 .pw-meta-left span{overflow:hidden; text-overflow:ellipsis; white-space:nowrap;}
@@ -1339,6 +1353,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
   const [articleAiResult, setArticleAiResult] = useState("");
   const [feedArticles, setFeedArticles] = useState<Article[]>(ARTICLES);
   const [feedError, setFeedError] = useState("");
+  const [expandedExcerpts, setExpandedExcerpts] = useState<Record<string | number, boolean>>({});
 
   const firstName = form.firstName;
   const interests = form.interests;
@@ -1364,6 +1379,32 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
 
   const initials = (firstName || "You").slice(0, 2).toUpperCase();
 
+  const toggleExcerpt = (id: string | number, event?: React.MouseEvent) => {
+    event?.stopPropagation();
+    setExpandedExcerpts(prev => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const renderExcerpt = (text: string, id: string | number) => {
+    const shouldClamp = text.length > 180;
+    const isExpanded = !!expandedExcerpts[id];
+    if (!shouldClamp) return <p>{text}</p>;
+
+    return (
+      <div>
+        <p style={{ marginBottom: 8, display: '-webkit-box', WebkitLineClamp: isExpanded ? 'unset' : 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+          {text}
+        </p>
+        <button
+          className="pw-inline-link"
+          onClick={(event) => toggleExcerpt(id, event)}
+          style={{ background: 'transparent', border: 'none', padding: 0, color: 'var(--wire)', fontWeight: 700 }}
+        >
+          {isExpanded ? 'Show less' : 'Read more'}
+        </button>
+      </div>
+    );
+  };
+
   useEffect(() => {
     async function loadPosts() {
       try {
@@ -1387,6 +1428,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
           time: 'Just now',
           read: '2 min',
           hero: false,
+          publishedAt: post.createdAt || post.created_at || new Date().toISOString(),
         })) : [];
 
         const newsPosts = Array.isArray(newsPayload.articles) ? newsPayload.articles.map((article: any, index: number) => ({
@@ -1400,9 +1442,10 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
           time: article.publishedAt ? new Date(article.publishedAt).toLocaleDateString() : 'Now',
           read: '5 min',
           hero: false,
+          publishedAt: article.published_at || article.publishedAt || article.imported_at || article.createdAt || new Date().toISOString(),
         })) : [];
 
-        const combined = [...newsPosts, ...apiPosts];
+        const combined = [...newsPosts, ...apiPosts].sort(sortByRecency);
         setFeedArticles((prev) => {
           const hero = prev.find(a => a.hero);
           return hero ? [hero, ...combined] : combined;
@@ -1450,11 +1493,31 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
   const publishStory = async () => {
     if (!draft.title.trim() || !draft.excerpt.trim()) return;
 
+    let authorEmail = form.email || '';
+    let authorName = form.displayName?.trim() || [form.firstName, form.lastName].filter(Boolean).join(' ').trim() || '';
+
+    if (supabase) {
+      try {
+        const { data: { user }, error } = await supabase.auth.getUser();
+        if (!error && user) {
+          const metadata = (user.user_metadata || {}) as any;
+          authorEmail = user.email || authorEmail;
+          authorName = metadata.display_name || metadata.username || metadata.full_name || metadata.name || authorName || (user.email ? user.email.split('@')[0] : '');
+          if (authorEmail) {
+            setForm(prev => ({ ...prev, email: authorEmail, displayName: authorName || prev.displayName }));
+          }
+        }
+      } catch (authError) {
+        console.warn('Unable to resolve current user for publishing story.', authError);
+      }
+    }
+
     const entry = {
       title: draft.title.trim(),
       excerpt: draft.excerpt.trim(),
       category: draft.category,
-      authorEmail: form.email || 'anonymous@pulsewire.local',
+      authorEmail: authorEmail || 'anonymous@pulsewire.local',
+      authorName: authorName || (authorEmail ? authorEmail.split('@')[0] : 'PulseWire user'),
       imageUrl: draft.image || 'https://images.unsplash.com/photo-1495020689067-958852a7765e?w=900&q=80',
       readTime: '2 min',
     };
@@ -1576,7 +1639,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
                 <div className="pw-hero-post-content">
                   <div><span className="pw-ai-chip"><Sparkles size={12} /> AI Brief available</span></div>
                   <h1 className="pw-serif" onClick={() => setOpenId(hero.id)}>{hero.title}</h1>
-                  <p className="pw-dek">{hero.excerpt}</p>
+                  {renderExcerpt(hero.excerpt, hero.id)}
                   <div className="pw-byline">
                     <span className="pw-name">{hero.author}</span><i>·</i><span>{hero.read}</span><i>·</i><span>{hero.time}</span>
                   </div>
@@ -1596,7 +1659,7 @@ function AppShell({ theme, toggleTheme, form, setForm, onLogout }) {
                     <div className="pw-card-media"><img src={a.img} alt="" /><span className="pw-cat-chip">{a.cat}</span></div>
                     <div className="pw-card-body">
                       <h3>{a.title}</h3>
-                      <p>{a.excerpt}</p>
+                      {renderExcerpt(a.excerpt, a.id)}
                       <div className="pw-card-meta">
                         <div className="pw-meta-left"><div className="pw-mini-avatar" />
                           <span>

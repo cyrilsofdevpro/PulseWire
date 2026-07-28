@@ -131,14 +131,14 @@ export default function ProfilePage() {
       setFollowing(counts.following);
 
       if (supabase) {
-        const { data: postRows, error: postRowsError } = await supabase
+        const { data: postRows } = await supabase
           .from('posts')
-          .select('id,content,commentsCount,likesCount,sharesCount,createdAt')
-          .eq('authorEmail', user.email || '')
-          .order('createdAt', { ascending: false });
+          .select('id,content,comments_count,likes_count,shares_count,created_at')
+          .eq('author_email', user.email || '')
+          .order('created_at', { ascending: false });
 
         const userPosts = (postRows || []).filter(Boolean) as Array<any>;
-        const articleViews = userPosts.reduce((total, post) => total + Number(post.commentsCount || 0) + Number(post.likesCount || 0) + Number(post.sharesCount || 0), 0);
+        const articleViews = userPosts.reduce((total, post) => total + Number(post.comments_count || 0) + Number(post.likes_count || 0) + Number(post.shares_count || 0), 0);
         const engagement = postCount ? Number((articleViews / postCount).toFixed(1)) : 0;
         const readingCompletion = postCount ? Math.min(100, Math.round((articleViews / Math.max(1, postCount * 6)) * 100)) : 0;
 

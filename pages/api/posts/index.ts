@@ -17,10 +17,15 @@ function parseImageUrls(field: any) {
 }
 
 function serializePostRow(post: any) {
+  const content = typeof post.content === 'string' ? post.content : ''
+  const contentLines = content.split(/\r?\n/).filter(Boolean)
+  const fallbackTitle = contentLines[0] || 'PulseWire story'
+  const fallbackExcerpt = contentLines.slice(1).join(' ').trim() || content || 'PulseWire story'
+
   return {
     id: post.id,
-    title: post.title || post.content || 'PulseWire story',
-    excerpt: post.excerpt || post.content || 'PulseWire story',
+    title: post.title || fallbackTitle,
+    excerpt: post.excerpt || fallbackExcerpt,
     category: post.category || 'Technology',
     authorName: post.author_name || post.authorName || 'PulseWire user',
     authorEmail: post.author_email || post.authorEmail || null,
@@ -90,7 +95,11 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const excerpt = String(body.excerpt || body.content || '').trim()
       const category = String(body.category || 'Technology').trim()
       const authorEmail = body.authorEmail ? String(body.authorEmail).trim() : null
+      const authorName = String(body.authorName || body.displayName || body.author || '').trim()
       const imageUrl = body.imageUrl ? String(body.imageUrl).trim() : ''
+      const postTitle = String(title || 'PulseWire story').trim()
+      const postExcerpt = String(excerpt || 'PulseWire story').trim()
+      const postCategory = String(category || 'Technology').trim()
 
       if (!title && !excerpt) {
         return res.status(400).json({ error: 'title or content is required' })
@@ -99,10 +108,13 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       // Build a safe payload for insertion that excludes optional columns which
       // may not exist in older DB schemas. We'll synthesize title/excerpt/category
       // in the API response using the inserted data.
-      const contentValue = `${title || excerpt}\n\n${excerpt || title}`.trim()
+      const contentValue = `${postTitle}\n\n${postExcerpt}`.trim()
       const payloadInsert: any = {
+        title: postTitle,
+        excerpt: postExcerpt,
+        category: postCategory,
         author_email: authorEmail,
-        author_name: authorEmail ? authorEmail.split('@')[0] : 'PulseWire user',
+        author_name: authorName || (authorEmail ? authorEmail.split('@')[0] : 'PulseWire user'),
         content: contentValue,
         image_urls: imageUrl ? JSON.stringify([imageUrl]) : '[]',
         likes_count: 0,
@@ -167,10 +179,10 @@ export default async function handler(req: NextApiRequest, res: NextApiResponse)
       const createdRow = data || {}
       const returnedPost = {
         id: createdRow.id,
-        title: createdRow.title || title || 'PulseWire story',
-        excerpt: createdRow.excerpt || excerpt || 'PulseWire story',
-        category: createdRow.category || category || 'Technology',
-        authorName: createdRow.author_name || createdRow.authorName || authorEmail ? authorEmail.split('@')[0] : 'PulseWire user',
+        title: createdRow.title || postTitle || 'PulseWire story',
+        excerpt: createdRow.excerpt || postExcerpt || 'PulseWire story',
+        category: createdRow.category || postCategory || 'Technology',
+        authorName: createdRow.author_name || createdRow.authorName || authorName || (authorEmail ? authorEmail.split('@')[0] : 'PulseWire user'),
         authorEmail: createdRow.author_email || createdRow.authorEmail || authorEmail,
         imageUrls: parseImageUrls(createdRow.image_urls || createdRow.imageUrls || createdRow.image_urls),
         likesCount: createdRow.likes_count || createdRow.likesCount || 0,
