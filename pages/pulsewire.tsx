@@ -1775,6 +1775,33 @@ export default function PulseWire() {
     };
   }, []);
 
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncView = async () => {
+      if (!supabase) {
+        if (isMounted) setView("landing");
+        return;
+      }
+
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!isMounted) return;
+      setView(session?.user ? "app" : "landing");
+    };
+
+    syncView();
+
+    const { data: { subscription } } = supabase?.auth.onAuthStateChange((_event, session) => {
+      if (!isMounted) return;
+      setView(session?.user ? "app" : "landing");
+    }) || { data: { subscription: null } };
+
+    return () => {
+      isMounted = false;
+      subscription?.unsubscribe?.();
+    };
+  }, []);
+
   const toggleTheme = () => setTheme(t => (t === "dark" ? "light" : "dark"));
 
   const goApp = () => setView("app");

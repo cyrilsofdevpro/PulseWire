@@ -49,7 +49,7 @@ export default function PricingPage() {
             <p className="pw-pricing-copy">Unlock faster story creation, AI metadata workflows, exclusive briefing and prediction tools, and advanced content publishing controls for your newsroom.</p>
           </div>
           <div className="pw-pricing-nav">
-            <button className="pw-btn-secondary" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+            <button className="pw-btn-secondary" onClick={() => router.push('/pulsewire')}><ArrowLeft size={16} /> Back to feed</button>
             <button className="pw-btn-primary" onClick={() => router.push('/ai')}>Open AI workspace</button>
           </div>
         </div>

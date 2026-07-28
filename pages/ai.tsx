@@ -198,7 +198,7 @@ export default function PulseWireAiPage() {
             <button className="active" onClick={() => window.location.assign('/ai')}>PulseWireAI</button>
           </nav>
           <div className="pw-topbar-right">
-            <button className="pw-btn-secondary" onClick={() => window.location.assign('/dashboard')}>Back to dashboard</button>
+            <button className="pw-btn-secondary" onClick={() => window.location.assign('/pulsewire')}>Back to feed</button>
           </div>
         </div>
       </header>
@@ -208,7 +208,7 @@ export default function PulseWireAiPage() {
           <main>
             <section className="pw-ai-widget">
               <div className="pw-ai-header-mobile">
-                <button className="pw-btn-secondary" onClick={() => window.location.assign('/dashboard')}><ArrowLeft size={16} />Back</button>
+                <button className="pw-btn-secondary" onClick={() => window.location.assign('/pulsewire')}><ArrowLeft size={16} />Back</button>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10, marginBottom: 12 }}>
                 <div>

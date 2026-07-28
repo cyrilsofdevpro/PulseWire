@@ -75,7 +75,7 @@ export default function AlertsPage() {
             <div className="pw-alert-tag"><Bell size={13} /> Alerts</div>
             <h1 className="pw-alerts-title">Latest news updates</h1>
           </div>
-          <button className="pw-back-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+          <button className="pw-back-btn" onClick={() => router.push('/pulsewire')}><ArrowLeft size={16} /> Back to feed</button>
         </div>
 
         {items.map((item, index) => (

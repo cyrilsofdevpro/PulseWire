@@ -85,7 +85,7 @@ export default function DiscoverPage() {
             <h1 className="pw-discover-title">Explore the newsroom</h1>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="pw-back-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+            <button className="pw-back-btn" onClick={() => router.push('/pulsewire')}><ArrowLeft size={16} /> Back to feed</button>
             <button className="pw-link-btn" onClick={() => router.push('/ai')}><Sparkles size={16} /> Open PulseWireAI</button>
           </div>
         </div>

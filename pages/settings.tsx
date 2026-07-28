@@ -69,6 +69,14 @@ export default function SettingsPage() {
   const displayName = form.displayName?.trim() || `${form.firstName} ${form.lastName}`.trim() || 'PulseWire user';
   const initials = displayName.slice(0, 2).toUpperCase();
 
+  const handleBack = () => {
+    if (typeof window !== 'undefined' && window.history.length > 1) {
+      router.back();
+    } else {
+      router.push('/pulsewire');
+    }
+  };
+
   useEffect(() => {
     if (!photoFile) {
       setPhotoPreview('');
@@ -146,7 +154,7 @@ export default function SettingsPage() {
     <div className="pw-settings-page">
       <style jsx>{styles}</style>
       <div className="pw-settings-shell">
-        <button className="pw-back-btn" onClick={() => router.back()}><ArrowLeft size={16} /> Back</button>
+        <button className="pw-back-btn" onClick={handleBack}><ArrowLeft size={16} /> Back</button>
         
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '16px', marginBottom: '22px', flexWrap: 'wrap' }}>
           <div>

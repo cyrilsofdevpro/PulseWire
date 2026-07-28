@@ -95,7 +95,7 @@ export default function NewsPage() {
             <h1 className="pw-news-title">Latest PulseWire coverage</h1>
           </div>
           <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-            <button className="pw-secondary-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Dashboard</button>
+            <button className="pw-secondary-btn" onClick={() => router.push('/pulsewire')}><ArrowLeft size={16} /> Feed</button>
             <button className="pw-link-btn" onClick={() => router.push('/ai')}><Sparkles size={16} /> Ask PulseWireAI</button>
             <button
               className={`pw-link-btn ${!isPro ? 'pw-secondary-btn' : ''}`}

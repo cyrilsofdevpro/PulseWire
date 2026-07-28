@@ -21,9 +21,47 @@ const styles = `
   .pw-profile-card { background: var(--ink-raised); border:1px solid var(--border-dark); border-radius: var(--radius); padding:18px; margin-bottom: 16px; }
   .pw-profile-card h3 { margin:0 0 10px; }
   .pw-profile-card p { margin:0; color: var(--text-d2); line-height:1.6; }
+  .pw-analytics-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
+  .pw-analytics-item { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius: 14px; padding:12px 14px; display:flex; flex-direction:column; gap:6px; }
+  .pw-analytics-item strong { color: var(--wire); font-size: 14px; }
+  .pw-analytics-item span { color: var(--text-d2); font-size: 13px; }
+  .pw-post-list { display:flex; flex-direction:column; gap:12px; }
+  .pw-post-card { background: rgba(255,255,255,0.03); border:1px solid rgba(255,255,255,0.06); border-radius: 14px; padding:14px; }
+  .pw-post-card h4 { margin:0 0 6px; font-size: 16px; color: var(--text-d1); }
+  .pw-post-card p { margin:0; color: var(--text-d2); line-height:1.55; }
+  .pw-post-meta { display:flex; flex-wrap:wrap; align-items:center; gap:8px; margin-top:10px; color: var(--text-d3); font-size: 12px; }
+  .pw-post-chip { display:inline-flex; align-items:center; gap:6px; padding:5px 8px; border-radius:999px; background: rgba(0,217,184,0.12); color: var(--wire); }
+  .pw-post-empty { padding:14px; border:1px dashed rgba(255,255,255,0.12); border-radius: 14px; color: var(--text-d2); }
   .pw-top-btn { display:inline-flex; align-items:center; gap:8px; padding:10px 14px; border-radius:999px; border:1px solid var(--border-dark); background:transparent; color:var(--text-d1); cursor:pointer; margin-bottom: 16px; }
-  @media (max-width: 640px) { .pw-profile-page { padding: 14px; } .pw-profile-hero { flex-direction: column; align-items:flex-start; } .pw-profile-stats { grid-template-columns: 1fr 1fr; } }
+  @media (max-width: 640px) { .pw-profile-page { padding: 14px; } .pw-profile-hero { flex-direction: column; align-items:flex-start; } .pw-profile-stats { grid-template-columns: 1fr 1fr; } .pw-analytics-grid { grid-template-columns: 1fr; } }
 `;
+
+interface ProfileAnalytics {
+  articleViews: number;
+  readingCompletion: number;
+  engagement: number;
+  growth: number;
+  subscribers: number;
+  revenue: number;
+  aiUsage: number;
+  community: number;
+}
+
+function formatMetric(value: number) {
+  if (value === 0) return '0';
+  return new Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: 1 }).format(value);
+}
+
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', maximumFractionDigits: 0 }).format(value);
+}
+
+function formatPostDate(value?: string) {
+  if (!value) return 'Recently published';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return 'Recently published';
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(date);
+}
 
 export default function ProfilePage() {
   const router = useRouter();
@@ -35,7 +73,18 @@ export default function ProfilePage() {
   const [bio, setBio] = useState('Your live profile details will show here after login.');
   const [verificationBadge, setVerificationBadge] = useState(false);
   const [badges, setBadges] = useState<Array<{ name: string; icon?: string; description?: string }>>([])
-  const [theme, setTheme] = useState('dark');
+  const [userPosts, setUserPosts] = useState<Array<{ id: string; title: string; excerpt: string; category: string; createdAt?: string; likesCount?: number; commentsCount?: number; sharesCount?: number }>>([])
+  const [analytics, setAnalytics] = useState<ProfileAnalytics>({
+    articleViews: 0,
+    readingCompletion: 0,
+    engagement: 0,
+    growth: 0,
+    subscribers: 0,
+    revenue: 0,
+    aiUsage: 0,
+    community: 0,
+  });
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
 
   useEffect(() => {
     async function load() {
@@ -72,12 +121,60 @@ export default function ProfilePage() {
       }
       const postResponse = await fetch(`/api/posts?authorEmail=${encodeURIComponent(user.email || '')}`);
       const postData = await postResponse.json();
-      const postCount = Array.isArray(postData.posts) ? postData.posts.length : 0;
+      const postList = Array.isArray(postData.posts) ? postData.posts : [];
+      const postCount = postList.length;
       setPosts(postCount);
+      setUserPosts(postList as Array<{ id: string; title: string; excerpt: string; category: string; createdAt?: string; likesCount?: number; commentsCount?: number; sharesCount?: number }>);
 
       const counts = await getFollowCounts(user.id);
       setFollowers(counts.followers);
       setFollowing(counts.following);
+
+      if (supabase) {
+        const { data: postRows, error: postRowsError } = await supabase
+          .from('posts')
+          .select('id,content,commentsCount,likesCount,sharesCount,createdAt')
+          .eq('authorEmail', user.email || '')
+          .order('createdAt', { ascending: false });
+
+        const userPosts = (postRows || []).filter(Boolean) as Array<any>;
+        const articleViews = userPosts.reduce((total, post) => total + Number(post.commentsCount || 0) + Number(post.likesCount || 0) + Number(post.sharesCount || 0), 0);
+        const engagement = postCount ? Number((articleViews / postCount).toFixed(1)) : 0;
+        const readingCompletion = postCount ? Math.min(100, Math.round((articleViews / Math.max(1, postCount * 6)) * 100)) : 0;
+
+        let communityCount = counts.followers;
+        const postIds = userPosts.map((post) => post.id).filter(Boolean);
+        if (postIds.length) {
+          const { data: commentRows } = await supabase.from('comments').select('id').in('postId', postIds);
+          communityCount += (commentRows || []).length;
+        }
+
+        const { data: paymentsRows } = await supabase
+          .from('manual_payments')
+          .select('amount,status')
+          .eq('email', user.email || '')
+          .eq('status', 'approved');
+
+        const subscribers = (paymentsRows || []).length;
+        const revenue = (paymentsRows || []).reduce((sum, row: any) => sum + Number(row.amount || 0), 0);
+        const aiUsage = userPosts.reduce((count, post) => {
+          const content = String(post.content || '').toLowerCase();
+          return count + (content.includes('ai') || content.includes('assistant') || content.includes('prompt') ? 1 : 0);
+        }, 0);
+
+        setAnalytics({
+          articleViews,
+          readingCompletion,
+          engagement,
+          growth: counts.followers,
+          subscribers,
+          revenue,
+          aiUsage,
+          community: communityCount,
+        });
+      }
+
+      setAnalyticsLoading(false);
     }
 
     load();
@@ -88,7 +185,7 @@ export default function ProfilePage() {
       <style jsx>{styles}</style>
       <div className="pw-profile-shell">
         <div style={{ display: 'flex', gap: '10px', marginBottom: '16px', flexWrap: 'wrap' }}>
-          <button className="pw-top-btn" onClick={() => router.push('/dashboard')}><ArrowLeft size={16} /> Back to dashboard</button>
+          <button className="pw-top-btn" onClick={() => router.push('/pulsewire')}><ArrowLeft size={16} /> Back to feed</button>
           <button className="pw-top-btn" onClick={() => router.push('/settings')} style={{ color: 'var(--wire)', borderColor: 'var(--wire)' }}><Globe size={16} /> Settings</button>
         </div>
 
@@ -140,6 +237,51 @@ export default function ProfilePage() {
             <strong>Live</strong>
             <span><Globe size={13} /> Account status</span>
           </div>
+        </section>
+
+        <section className="pw-profile-card">
+          <h3>Analytics</h3>
+          <div className="pw-analytics-grid">
+            {[
+              { label: 'Article Views', value: analyticsLoading ? 'Loading…' : formatMetric(analytics.articleViews) },
+              { label: 'Reading Statistics', value: analyticsLoading ? 'Loading…' : `${analytics.readingCompletion}% completion` },
+              { label: 'Engagement Analytics', value: analyticsLoading ? 'Loading…' : `${analytics.engagement.toFixed(1)} avg` },
+              { label: 'User Growth Analytics', value: analyticsLoading ? 'Loading…' : `${analytics.growth > 0 ? '+' : ''}${analytics.growth} followers` },
+              { label: 'Subscription Analytics', value: analyticsLoading ? 'Loading…' : `${analytics.subscribers} active` },
+              { label: 'Revenue Analytics', value: analyticsLoading ? 'Loading…' : formatCurrency(analytics.revenue) },
+              { label: 'AI Usage Statistics', value: analyticsLoading ? 'Loading…' : `${analytics.aiUsage} prompts` },
+              { label: 'Community Analytics', value: analyticsLoading ? 'Loading…' : `${analytics.community} members` }
+            ].map((item) => (
+              <div key={item.label} className="pw-analytics-item">
+                <strong>{item.label}</strong>
+                <span>{item.value}</span>
+              </div>
+            ))}
+          </div>
+          <p style={{ marginTop: 12 }}>Your analytics update live from your posts, followers, comments, and approved payments.</p>
+        </section>
+
+        <section className="pw-profile-card">
+          <h3>Your posts</h3>
+          {userPosts.length > 0 ? (
+            <div className="pw-post-list">
+              {userPosts.map((post) => (
+                <div key={post.id} className="pw-post-card">
+                  <h4>{post.title || 'PulseWire story'}</h4>
+                  <p>{post.excerpt || 'No preview available.'}</p>
+                  <div className="pw-post-meta">
+                    <span className="pw-post-chip">{post.category || 'General'}</span>
+                    <span>{formatPostDate(post.createdAt)}</span>
+                    <span>♥ {post.likesCount || 0}</span>
+                    <span>💬 {post.commentsCount || 0}</span>
+                    <span>↗ {post.sharesCount || 0}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="pw-post-empty">You have not published any posts yet. Share your first story to see it appear here.</div>
+          )}
         </section>
 
         <section className="pw-profile-card">
